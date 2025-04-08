@@ -7,7 +7,7 @@ import pickle
 from sklearn.metrics import r2_score
 from sklearn.model_selection import GridSearchCV
 
-from src.exception import CustomException
+from src.exceptions import CustomException
 from src.logger import logging
 
 def save_object(file_path, obj):
@@ -127,5 +127,5 @@ if __name__ == "__main__":
         print("1. save_object: Save Python objects to disk")
         print("2. load_object: Load Python objects from disk")
         print("3. evaluate_models: Evaluate and compare multiple ML models")
-    except Exception as e:
+    except Exceptions as e:
         print(f"Error: {e}")
