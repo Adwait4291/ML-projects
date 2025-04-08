@@ -1,167 +1,81 @@
 import os
 import sys
-import pickle
-import numpy as np
-from sklearn.metrics import r2_score
-from sklearn.model_selection import GridSearchCV
-
 from src.exception import CustomException
 from src.logger import logging
+import pandas as pd
 
-def save_object(file_path, obj):
-    """
-    Save a Python object to a file using pickle
+from sklearn.model_selection import train_test_split
+from dataclasses import dataclass
+
+from src.components.data_transformation import DataTransformation
+from src.components.data_transformation import DataTransformationConfig
+
+from src.components.model_trainer import ModelTrainerConfig
+from src.components.model_trainer import ModelTrainer
+
+@dataclass
+class DataIngestionConfig:
+    train_data_path: str = os.path.join('artifacts', "train.csv")
+    test_data_path: str = os.path.join('artifacts', "test.csv")
+    raw_data_path: str = os.path.join('artifacts', "data.csv")
+
+class DataIngestion:
+    def __init__(self):
+        self.ingestion_config = DataIngestionConfig()
     
-    Args:
-        file_path: Path where the object will be saved
-        obj: Python object to be saved
-    """
-    try:
-        dir_path = os.path.dirname(file_path)
-        os.makedirs(dir_path, exist_ok=True)
-        
-        with open(file_path, "wb") as file_obj:
-            pickle.dump(obj, file_obj)
+    def initiate_data_ingestion(self):
+        logging.info("Entered the data ingestion method or component")
+        try:
+            # Using standardized path format with forward slashes
+            df = pd.read_csv('notebook/data/stud.csv')
+            logging.info('Read the dataset as dataframe')
+            logging.info(f'Dataset shape: {df.shape}')
             
-        logging.info(f"Object saved successfully at: {file_path}")
-    except Exception as e:
-        raise CustomException(e, sys) from e
+            os.makedirs(os.path.dirname(self.ingestion_config.train_data_path), exist_ok=True)
+            
+            df.to_csv(self.ingestion_config.raw_data_path, index=False, header=True)
+            logging.info(f"Raw data saved to {self.ingestion_config.raw_data_path}")
+            
+            logging.info("Train test split initiated")
+            train_set, test_set = train_test_split(df, test_size=0.2, random_state=42)
+            logging.info(f"Train set shape: {train_set.shape}, Test set shape: {test_set.shape}")
+            
+            train_set.to_csv(self.ingestion_config.train_data_path, index=False, header=True)
+            logging.info(f"Train data saved to {self.ingestion_config.train_data_path}")
+            
+            test_set.to_csv(self.ingestion_config.test_data_path, index=False, header=True)
+            logging.info(f"Test data saved to {self.ingestion_config.test_data_path}")
+            
+            logging.info("Ingestion of the data is completed")
+            
+            return (
+                self.ingestion_config.train_data_path,
+                self.ingestion_config.test_data_path,
+                self.ingestion_config.raw_data_path
+            )
+        except Exception as e:
+            logging.error(f"Error during data ingestion: {e}")
+            raise CustomException(e, sys) from e
 
-def load_object(file_path):
-    """
-    Load a Python object from a file using pickle
-    
-    Args:
-        file_path: Path to the file containing the object
-        
-    Returns:
-        The loaded Python object
-    """
-    try:
-        with open(file_path, "rb") as file_obj:
-            return pickle.load(file_obj)
-    except Exception as e:
-        raise CustomException(e, sys) from e
-
-def evaluate_models(X_train, y_train, X_test, y_test, models, params):
-    """
-    Evaluate multiple machine learning models with hyperparameter tuning
-    
-    Args:
-        X_train: Training features
-        y_train: Training target
-        X_test: Testing features
-        y_test: Testing target
-        models: Dictionary of models to evaluate {model_name: model_instance}
-        params: Dictionary of parameter grids for each model {model_name: param_grid}
-        
-    Returns:
-        Dictionary containing test R² scores for each model
-    """
-    try:
-        report = {}
-        
-        for model_name, model in models.items():
-            logging.info(f"Training and evaluating {model_name}")
-            
-            # Get parameter grid for this model
-            param_grid = params[model_name]
-            
-            # If parameters exist, perform GridSearchCV
-            if param_grid:
-                logging.info(f"Performing hyperparameter tuning for {model_name}")
-                grid = GridSearchCV(model, param_grid, cv=3, n_jobs=-1, verbose=2)
-                grid.fit(X_train, y_train)
-                
-                # Set best parameters to the model
-                best_params = grid.best_params_
-                model.set_params(**best_params)
-                logging.info(f"Best parameters for {model_name}: {best_params}")
-            
-            # Train the model (with best params if GridSearchCV was used)
-            model.fit(X_train, y_train)
-            
-            # Make predictions
-            y_train_pred = model.predict(X_train)
-            y_test_pred = model.predict(X_test)
-            
-            # Calculate R² scores
-            train_r2 = r2_score(y_train, y_train_pred)
-            test_r2 = r2_score(y_test, y_test_pred)
-            
-            # Store test score in report
-            report[model_name] = test_r2
-            
-            logging.info(f"{model_name} - Train R²: {train_r2:.4f}, Test R²: {test_r2:.4f}")
-        
-        # Print the final report
-        print("\nModel Evaluation Results (Test R² Scores):")
-        for model_name, r2 in report.items():
-            print(f"{model_name}: {r2:.4f}")
-
-        # Find and print the best model
-        best_model_name = max(report, key=report.get)
-        best_score = report[best_model_name]
-        print(f"\nBest performing model: {best_model_name} with R² score: {best_score:.4f}")
-        
-        return report
-    except Exception as e:
-        logging.error(f"Error in evaluating models: {e}")
-        raise CustomException(e, sys) from e
-
-# Example usage
 if __name__ == "__main__":
-    # Import necessary libraries for demo
-    from sklearn.datasets import fetch_california_housing
-    from sklearn.model_selection import train_test_split
-    from sklearn.linear_model import LinearRegression, Ridge, Lasso
-    from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-    
-    # Load sample dataset
-    data = fetch_california_housing()
-    X, y = data.data, data.target
-    
-    # Split the data
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
-    
-    # Define models to evaluate
-    models = {
-        'LinearRegression': LinearRegression(),
-        'Ridge': Ridge(),
-        'Lasso': Lasso(),
-        'RandomForest': RandomForestRegressor(),
-        'GradientBoosting': GradientBoostingRegressor()
-    }
-    
-    # Define parameter grids for hyperparameter tuning
-    params = {
-        'LinearRegression': {},  # No hyperparameters to tune
-        'Ridge': {'alpha': [0.1, 1.0, 10.0]},
-        'Lasso': {'alpha': [0.1, 1.0, 10.0]},
-        'RandomForest': {
-            'n_estimators': [50, 100],
-            'max_depth': [None, 10, 20],
-            'min_samples_split': [2, 5]
-        },
-        'GradientBoosting': {
-            'n_estimators': [50, 100],
-            'learning_rate': [0.01, 0.1],
-            'max_depth': [3, 5]
-        }
-    }
-    
-    # Evaluate models
-    results = evaluate_models(X_train, y_train, X_test, y_test, models, params)
-    
-    # Save the best model
-    best_model_name = max(results, key=results.get)
-    best_model = models[best_model_name]
-    
-    save_object(
-        file_path="artifacts/model.pkl",
-        obj=best_model
-    )
-    
-    logging.info(f"Best model ({best_model_name}) saved to artifacts/model.pkl")
+    try:
+        # Step 1: Data Ingestion
+        obj = DataIngestion()
+        train_data, test_data, raw_data = obj.initiate_data_ingestion()
+        
+        # Step 2: Data Transformation
+        data_transformation = DataTransformation()
+        train_arr, test_arr, preprocessor_path = data_transformation.initiate_data_transformation(train_data, test_data)
+        
+        # Step 3: Model Training
+        modeltrainer = ModelTrainer()
+        r2_score = modeltrainer.initiate_model_trainer(train_arr, test_arr)
+        
+        # Print results
+        print(f"\nPipeline executed successfully!")
+        print(f"Preprocessor saved at: {preprocessor_path}")
+        print(f"Model saved at: {ModelTrainerConfig().trained_model_file_path}")
+        print(f"Final Model Performance (R² score): {r2_score:.4f}")
+    except Exception as e:
+        print(f"Error occurred: {e}")
+

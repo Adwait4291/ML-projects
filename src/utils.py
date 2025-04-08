@@ -1,113 +1,131 @@
 import os
 import sys
+import numpy as np
+import pandas as pd
+import dill
 import pickle
+from sklearn.metrics import r2_score
+from sklearn.model_selection import GridSearchCV
+
 from src.exception import CustomException
 from src.logger import logging
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from dataclasses import dataclass
-from src.components.data_transformation import DataTransformation
-from src.components.data_transformation import DataTransformationConfig
-from sklearn.metrics import r2_score
-
-print("Current working directory:", os.getcwd())
-
-@dataclass
-class DataIngestionConfig:
-    train_data_path: str = os.path.join('artifacts', 'train.csv')
-    test_data_path: str = os.path.join('artifacts', 'test.csv')
-    raw_data_path: str = os.path.join('artifacts', 'data.csv')
-
-class DataIngestion:
-    def __init__(self):
-        self.ingestion_config = DataIngestionConfig()
-    
-    def initiate_data_ingestion(self):
-        logging.info("Entered the data ingestion method or component")
-        try:
-            # Step 1: Read the dataset
-            logging.info("Reading the dataset from 'notebook/data/stud.csv'")
-            df = pd.read_csv('notebook/data/stud.csv')
-            logging.info(f"Dataset shape: {df.shape}")
-            logging.info("Read the dataset as dataframe")
-            
-            # Step 2: Create the artifacts directory
-            artifacts_dir = os.path.dirname(self.ingestion_config.train_data_path)
-            logging.info(f"Creating directory: {artifacts_dir}")
-            os.makedirs(artifacts_dir, exist_ok=True)
-            
-            # Step 3: Save raw data
-            logging.info(f"Saving raw data to {self.ingestion_config.raw_data_path}")
-            df.to_csv(self.ingestion_config.raw_data_path, index=False, header=True)
-            
-            # Step 4: Train-test split
-            logging.info("Train test split initiated")
-            train_set, test_set = train_test_split(df, test_size=0.2, random_state=42)
-            logging.info(f"Train set shape: {train_set.shape}, Test set shape: {test_set.shape}")
-            
-            # Step 5: Save train and test data
-            logging.info(f"Saving train data to {self.ingestion_config.train_data_path}")
-            train_set.to_csv(self.ingestion_config.train_data_path, index=False, header=True)
-            
-            logging.info(f"Saving test data to {self.ingestion_config.test_data_path}")
-            test_set.to_csv(self.ingestion_config.test_data_path, index=False, header=True)
-            
-            logging.info("Ingestion of the data is completed")
-            
-            return (self.ingestion_config.train_data_path,
-                    self.ingestion_config.test_data_path,
-                    self.ingestion_config.raw_data_path)
-        except Exception as e:
-            logging.error(f"Error during data ingestion: {e}")
-            raise CustomException(e, sys) from e
 
 def save_object(file_path, obj):
+    """
+    Save a Python object to a file using pickle
+    
+    Args:
+        file_path: Path where the object will be saved
+        obj: Python object to be saved
+    """
     try:
         dir_path = os.path.dirname(file_path)
-        os.makedirs(dir_path, exist_ok=True)  # Ensure the directory exists
-        logging.info(f"Saving object to {file_path}")
+        os.makedirs(dir_path, exist_ok=True)
+        
         with open(file_path, "wb") as file_obj:
-            pickle.dump(obj, file_obj)  # Save the object as a pickle file
-        logging.info("Object saved successfully")
+            pickle.dump(obj, file_obj)
+        
+        logging.info(f"Object saved successfully at: {file_path}")
     except Exception as e:
-        logging.error(f"Error during saving object: {e}")
+        logging.error(f"Error in save_object: {e}")
         raise CustomException(e, sys) from e
 
-# This is the main executable part
+def evaluate_models(X_train, y_train, X_test, y_test, models, params):
+    """
+    Evaluate multiple machine learning models with hyperparameter tuning
+    
+    Args:
+        X_train: Training features
+        y_train: Training target
+        X_test: Testing features
+        y_test: Testing target
+        models: Dictionary of models to evaluate {model_name: model_instance}
+        params: Dictionary of parameter grids for each model {model_name: param_grid}
+        
+    Returns:
+        Dictionary containing test R² scores for each model
+    """
+    try:
+        report = {}
+        
+        for model_name, model in models.items():
+            logging.info(f"Training and evaluating {model_name}")
+            
+            # Get parameter grid for this model
+            param_grid = params[model_name]
+            
+            # If parameters exist, perform GridSearchCV
+            if param_grid:
+                try:
+                    logging.info(f"Performing hyperparameter tuning for {model_name}")
+                    gs = GridSearchCV(model, param_grid, cv=3, n_jobs=-1, verbose=2)
+                    gs.fit(X_train, y_train)
+                    
+                    # Set best parameters to the model
+                    model.set_params(**gs.best_params_)
+                    logging.info(f"Best parameters for {model_name}: {gs.best_params_}")
+                except Exception as hyper_e:
+                    logging.warning(f"GridSearchCV failed for {model_name}: {hyper_e}")
+                    logging.info(f"Training {model_name} with default parameters")
+            
+            # Train the model (with best params if GridSearchCV was used)
+            model.fit(X_train, y_train)
+            
+            # Make predictions
+            y_train_pred = model.predict(X_train)
+            y_test_pred = model.predict(X_test)
+            
+            # Calculate R² scores
+            train_model_score = r2_score(y_train, y_train_pred)
+            test_model_score = r2_score(y_test, y_test_pred)
+            
+            # Store test score in report
+            report[model_name] = test_model_score
+            
+            logging.info(f"{model_name} - Train R²: {train_model_score:.4f}, Test R²: {test_model_score:.4f}")
+        
+        # Print the final report
+        print("\nModel Evaluation Results (Test R² Scores):")
+        for model_name, r2 in report.items():
+            print(f"{model_name}: {r2:.4f}")
+
+        # Find and print the best model
+        best_model_name = max(report, key=report.get)
+        best_score = report[best_model_name]
+        print(f"\nBest performing model: {best_model_name} with R² score: {best_score:.4f}")
+        
+        return report
+    except Exception as e:
+        logging.error(f"Error in evaluating models: {e}")
+        raise CustomException(e, sys) from e
+
+def load_object(file_path):
+    """
+    Load a Python object from a file using pickle
+    
+    Args:
+        file_path: Path to the file containing the object
+        
+    Returns:
+        The loaded Python object
+    """
+    try:
+        with open(file_path, "rb") as file_obj:
+            obj = pickle.load(file_obj)
+        logging.info(f"Object loaded successfully from: {file_path}")
+        return obj
+    except Exception as e:
+        logging.error(f"Error in load_object: {e}")
+        raise CustomException(e, sys) from e
+
+# Example usage
 if __name__ == "__main__":
     try:
-        # Create a DataIngestion object
-        obj = DataIngestion()
-        
-        # Call the data ingestion method
-        train_path, test_path, raw_path = obj.initiate_data_ingestion()
-        
-        # Initialize data transformation after ingestion is complete
-        data_transformation = DataTransformation()
-        train_arr, test_arr, _ = data_transformation.initiate_data_transformation(train_path, test_path)
-        
-        print(f"Data ingestion completed successfully!")
-        print(f"Raw data saved to: {raw_path}")
-        print(f"Train data saved to: {train_path}")
-        print(f"Test data saved to: {test_path}")
-        print(f"Data transformation completed successfully!")
+        # This section would be run when utils.py is executed directly
+        # Just a placeholder to show how to use these functions
+        print("Utility functions for ML pipeline:")
+        print("1. save_object: Save Python objects to disk")
+        print("2. load_object: Load Python objects from disk")
+        print("3. evaluate_models: Evaluate and compare multiple ML models")
     except Exception as e:
-        print(f"Error occurred: {e}")
-
-        def evaluate_models(X_train,y_train,X_test,y_test,models):
-            try:
-                report = {}
-                for i in range(len(list(models))):
-
-                    model = list(models.values())[i]
-                    model.fit(X_train,y_train) # Train model
-                    y_train_pred = model.predict(X_train)
-                    y_test_pred = model.predict(X_test)
-                    train_model_score= r2_score(y_train,y_train_pred) # Train score
-                    test_model_score= r2_score(y_test,y_test_pred)
-
-
-                    report[list(model)] = models[model].score(X_test,y_test)
-                return report
-            except Exception as e:
-                raise CustomException(e, sys) from e
+        print(f"Error: {e}")
