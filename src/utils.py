@@ -1,5 +1,6 @@
 import os
 import sys
+import pickle
 from src.exception import CustomException
 from src.logger import logging
 import pandas as pd
@@ -7,6 +8,7 @@ from sklearn.model_selection import train_test_split
 from dataclasses import dataclass
 from src.components.data_transformation import DataTransformation
 from src.components.data_transformation import DataTransformationConfig
+from sklearn.metrics import r2_score
 
 print("Current working directory:", os.getcwd())
 
@@ -59,6 +61,18 @@ class DataIngestion:
             logging.error(f"Error during data ingestion: {e}")
             raise CustomException(e, sys) from e
 
+def save_object(file_path, obj):
+    try:
+        dir_path = os.path.dirname(file_path)
+        os.makedirs(dir_path, exist_ok=True)  # Ensure the directory exists
+        logging.info(f"Saving object to {file_path}")
+        with open(file_path, "wb") as file_obj:
+            pickle.dump(obj, file_obj)  # Save the object as a pickle file
+        logging.info("Object saved successfully")
+    except Exception as e:
+        logging.error(f"Error during saving object: {e}")
+        raise CustomException(e, sys) from e
+
 # This is the main executable part
 if __name__ == "__main__":
     try:
@@ -79,3 +93,21 @@ if __name__ == "__main__":
         print(f"Data transformation completed successfully!")
     except Exception as e:
         print(f"Error occurred: {e}")
+
+        def evaluate_models(X_train,y_train,X_test,y_test,models):
+            try:
+                report = {}
+                for i in range(len(list(models))):
+
+                    model = list(models.values())[i]
+                    model.fit(X_train,y_train) # Train model
+                    y_train_pred = model.predict(X_train)
+                    y_test_pred = model.predict(X_test)
+                    train_model_score= r2_score(y_train,y_train_pred) # Train score
+                    test_model_score= r2_score(y_test,y_test_pred)
+
+
+                    report[list(model)] = models[model].score(X_test,y_test)
+                return report
+            except Exception as e:
+                raise CustomException(e, sys) from e
