@@ -13,7 +13,7 @@ app = application
 def index():
     return render_template('index.html')
 
-@app.route('/predictdata', methods=['GET', 'POST'])
+@application.route('/predictdata', methods=['GET', 'POST'])
 def predictdata():
     if request.method == 'GET':
         return render_template('home.html')
@@ -36,5 +36,5 @@ def predictdata():
     return render_template('home.html', results=results[0])
 
 if __name__ == "__main__":  # type: ignore
-    app.run(host="0.0.0.0")
+    application.run(host="0.0.0.0")
 
