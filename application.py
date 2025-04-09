@@ -33,6 +33,10 @@ def predictdata():
 
     predict_pipeline = PredictPipeline()
     results = predict_pipeline.predict(predict_df)
+    print('%(name)s: %(endpoint)s' % {
+        'name': 'FlaskApp',
+        'endpoint': '/predictdata'
+    })
     return render_template('home.html', results=results[0])
 
 if __name__ == "__main__":  # type: ignore
