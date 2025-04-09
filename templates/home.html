@@ -149,7 +149,7 @@
             </div>
 
             <div class="form-section">
-                <form id="predictionForm" action="{{ url_for('predictdata')}}" method="post">
+                <form action="{{ url_for('predictdata') }}" method="post">
                     <div class="row g-4">
                         <div class="col-md-6">
                             <div class="mb-4">
@@ -289,3 +289,16 @@
     </script>
 </body>
 </html>
+
+application= Flask(__name__)
+
+@application.route('/')
+def index():
+    return render_template('index.html')
+
+@application.route('/predictdata', methods=['GET', 'POST'])
+def predictdata():
+    # Your logic here
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", debug=True)
